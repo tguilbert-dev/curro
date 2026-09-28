@@ -1,4 +1,4 @@
-import { addDays, diffDays, formatShort, startOfWeek, weekdayIndex, WEEKDAY_SHORT, type ISODate } from './dates';
+import { addDays, diffDays, formatShort, mondayOf, weekdayIndex, WEEKDAY_SHORT, type ISODate } from './dates';
 import { weeklyChecks } from './heuristics';
 import { planSchema } from './plan';
 import { between, paceSecPerKm, plannedAsActivities, sumKm, weekVolume } from './stats';
@@ -19,7 +19,7 @@ export interface ReviewInput {
 export function buildReviewPrompt({ plan, runs, today, weeksBack, cross, note }: ReviewInput): string {
   const unit = plan.sourceUnits;
   const d = (km: number) => `${fromKm(km, unit).toFixed(1)} ${unit}`;
-  const thisWeek = startOfWeek(today);
+  const thisWeek = mondayOf(today); // the prompt talks in the plan's Monday-to-Sunday weeks
   const planWeek = Math.floor(diffDays(thisWeek, plan.startDate) / 7) + 1;
   const weekStarts = Array.from({ length: weeksBack }, (_, i) => addDays(thisWeek, -7 * (weeksBack - 1 - i)));
   const planned = plannedAsActivities(plan.workouts);

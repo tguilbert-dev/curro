@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useApp } from '../context';
 import { db } from '../db';
 import { addActivity, daysPerWeek, SUGGESTED_ACTIVITIES, toggleActivity, trend, type Trend } from '../lib/activities';
-import { addDays, formatShort, formatWeekRange, startOfWeek, weekDates, WEEKDAY_SHORT } from '../lib/dates';
+import { addDays, formatShort, formatWeekRange, startOfWeek, weekDates, weekdayLabels } from '../lib/dates';
 import type { CrossActivity } from '../types';
 import { useSwipe } from '../components/useSwipe';
 
@@ -52,7 +52,7 @@ export function ActivitiesView() {
             </div>
             <div className="act-grid">
               <span />
-              {WEEKDAY_SHORT.map((d, i) => (
+              {weekdayLabels().map((d, i) => (
                 <span key={d} className="h" style={dates[i] === today ? { color: 'var(--accent)', fontWeight: 700 } : undefined}>
                   {d.slice(0, 2)}
                 </span>

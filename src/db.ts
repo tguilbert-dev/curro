@@ -41,14 +41,26 @@ db.version(2)
 // v3: drop the old PT tables once their data has been copied.
 db.version(3).stores({ ptExercises: null, ptLogs: null });
 
-export function useSettings(): Settings {
+/** undefined while loading, so the app can wait instead of flashing defaults. */
+export function useSettings(): Settings | undefined {
   const rows = useLiveQuery(() => db.settings.toArray(), []);
+  if (!rows) return undefined;
   const settings = { ...DEFAULT_SETTINGS };
-  for (const row of rows ?? []) (settings as Record<string, unknown>)[row.key] = row.value;
+  for (const row of rows) (settings as Record<string, unknown>)[row.key] = row.value;
   return settings;
 }
 
+/** Mirrored outside IndexedDB so index.html can apply the theme before the first paint. */
+export const THEME_KEY = 'curro-theme';
+
 export function saveSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
+  if (key === 'theme') {
+    try {
+      localStorage.setItem(THEME_KEY, String(value));
+    } catch {
+      // storage blocked: the theme still applies once the app loads
+    }
+  }
   return db.settings.put({ key, value });
 }
 
@@ -57,8 +69,9 @@ export function useActivePlan(): StoredPlan | undefined | null {
   return useLiveQuery(async () => (await db.plans.where('status').equals('active').first()) ?? null, []);
 }
 
-export function useRuns(): Run[] {
-  return useLiveQuery(() => db.runs.orderBy('date').toArray(), []) ?? [];
+/** undefined while loading. */
+export function useRuns(): Run[] | undefined {
+  return useLiveQuery(() => db.runs.orderBy('date').toArray(), []);
 }
 
 /** Make the newly imported plan active and archive any previous one. */

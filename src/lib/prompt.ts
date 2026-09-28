@@ -1,4 +1,4 @@
-import { addDays, diffDays, startOfWeek, today, weekdayIndex, type ISODate } from './dates';
+import { addDays, diffDays, mondayOf, today, weekdayIndex, type ISODate } from './dates';
 import { planSchema } from './plan';
 import type { Unit } from './units';
 
@@ -35,12 +35,12 @@ const or = (v: string, fallback = '(not given — make a sensible assumption and
 
 /** Number of Monday-to-Sunday weeks from this week up to and including race week. */
 export function weeksUntil(raceDate: ISODate, from: ISODate = today()): number {
-  return Math.floor(diffDays(startOfWeek(raceDate), startOfWeek(from)) / 7) + 1;
+  return Math.floor(diffDays(mondayOf(raceDate), mondayOf(from)) / 7) + 1;
 }
 
 export function buildPrompt(a: PromptAnswers, now: ISODate = today()): string {
   const weeks = a.raceDate ? weeksUntil(a.raceDate, now) : null;
-  const firstMonday = weekdayIndex(now) >= 5 ? addDays(startOfWeek(now), 7) : startOfWeek(now);
+  const firstMonday = weekdayIndex(now) >= 5 ? addDays(mondayOf(now), 7) : mondayOf(now);
   const available = a.raceDate ? weeksUntil(a.raceDate, firstMonday) : null;
   const weekLine = weeks && available && available > 0
     ? `- Weeks available: ${available} (from the week starting Monday ${firstMonday}, through race week). Use fewer weeks if a shorter plan suits me better, but never more.`

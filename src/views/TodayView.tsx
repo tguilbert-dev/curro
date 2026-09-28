@@ -1,11 +1,12 @@
 import { useApp } from '../context';
 import { ActivityToggles } from '../components/ActivityToggles';
 import { CheckList, StatusBadge, TypePill } from '../components/ui';
-import { addDays, diffDays, formatLong, startOfWeek } from '../lib/dates';
+import { addDays, diffDays, formatLong, mondayOf, startOfWeek } from '../lib/dates';
 import { weeklyChecks } from '../lib/heuristics';
 import { dayStatus, plannedAsActivities, weekVolume } from '../lib/stats';
 import { fmtDist, fmtPace } from '../lib/units';
-import { TYPE_LABEL } from '../types';
+import { isRunningType, TYPE_LABEL } from '../types';
+import { openCalendarAt } from './CalendarView';
 import { SamplePlanButton } from './PlanView';
 
 export function TodayView() {
@@ -43,7 +44,13 @@ export function TodayView() {
       <section className="card">
         <div className="card-head">
           <h2>This week</h2>
-          <button className="btn ghost small" onClick={() => goTo('calendar')}>
+          <button
+            className="btn ghost small"
+            onClick={() => {
+              openCalendarAt(today, 'week');
+              goTo('calendar');
+            }}
+          >
             Week view →
           </button>
         </div>
@@ -73,7 +80,7 @@ function Countdown({ daysToRace }: { daysToRace: number }) {
   if (!plan) return null;
   const totalDays = diffDays(plan.race.date, plan.startDate);
   const elapsed = Math.min(Math.max(diffDays(today, plan.startDate), 0), totalDays);
-  const weekIdx = Math.floor(diffDays(startOfWeek(today), plan.startDate) / 7);
+  const weekIdx = Math.floor(diffDays(mondayOf(today), plan.startDate) / 7);
   const week = plan.weeks[weekIdx];
   const label = daysToRace === 0 ? 'Race day!' : daysToRace > 0 ? (daysToRace === 1 ? 'day to go' : 'days to go') : 'days since the race';
   return (
@@ -138,7 +145,7 @@ function TodayWorkout() {
         </p>
       )}
       <div className="row">
-        {planned && planned.type !== 'rest' && todays.length === 0 && (
+        {planned && isRunningType(planned.type) && todays.length === 0 && (
           <button className="btn primary" onClick={() => openRunForm({ date: today })}>
             Log this run
           </button>

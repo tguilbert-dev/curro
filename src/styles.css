@@ -235,6 +235,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .st-extra .dot { background: var(--accent); }
 .st-upcoming .dot, .st-today .dot { background: transparent; border: 2px solid var(--muted); }
 .st-rest .dot { background: var(--grid); }
+.st-cross .dot { background: var(--ink-2); }
 .act-mark { display: block; font-size: 0.72rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Month view ---------- */
@@ -324,3 +325,31 @@ table.data th { color: var(--ink-2); font-weight: 600; }
 .run-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface-2); border-radius: 8px; }
 details summary { cursor: pointer; font-weight: 600; }
 pre.prompt { white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; background: var(--surface-2); padding: 12px; border-radius: 10px; font-size: 0.78rem; margin: 0; }
+
+/* ---------- Update bar ---------- */
+.update-bar {
+  position: sticky; top: calc(env(safe-area-inset-top) + 57px); z-index: 9; margin: 8px 16px 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; font-size: 0.9rem;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+@media (min-width: 900px) { .update-bar { max-width: 788px; margin: 8px auto 0; } }
+
+/* ---------- Collapsible sections ---------- */
+.section { padding: 0; }
+.section summary {
+  display: flex; align-items: center; gap: 8px; padding: 16px; cursor: pointer; list-style: none;
+}
+.section summary::-webkit-details-marker { display: none; }
+.section summary h2 { flex: 1; }
+.section .chev {
+  width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg); margin: -4px 4px 0 0; transition: transform 0.15s;
+}
+.section details[open] .chev { transform: rotate(225deg); margin-top: 4px; }
+.section-body { padding: 0 16px 16px; }
+.checks-summary { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--ink-2); }
+.checks-summary .icon { width: 18px; height: 18px; border-radius: 99px; display: grid; place-items: center; font-size: 0.68rem; font-weight: 700; color: #fff; }
+.checks-summary.lvl-good .icon { background: var(--good); }
+.checks-summary.lvl-warning .icon { background: var(--warning); color: #0b0b0b; }
+.checks-summary.lvl-critical .icon { background: var(--critical); }
+.nudge { margin-top: 4px; }

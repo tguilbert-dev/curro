@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { addDays, daysInMonth, isValidDate, startOfWeek, weekdayIndex } from './dates';
 import { weeklyChecks, planIssues, type WeekContext } from './heuristics';
-import { extractJson, importPlan, parsePlan } from './plan';
+import { extractJson, importPlan, moveWorkout, parsePlan } from './plan';
 import { buildPrompt, EMPTY_ANSWERS, weeksUntil } from './prompt';
 import { daysPerWeek, trend } from './activities';
 import { buildReviewPrompt, comparePlans } from './review';
 import { dayStatus } from './stats';
-import { fmtPace, parseClock } from './units';
+import { fmtPace, parseClock, parseDecimal, parseDuration } from './units';
 import type { Run, StoredPlan } from '../types';
 
 const example = readFileSync('examples/half-marathon-12-weeks.json', 'utf8');
@@ -117,7 +117,23 @@ describe('weekly checks', () => {
 
   it('treats a return from a cutback week as fine', () => {
     const history = [run('2026-09-06', 30, 'long'), run('2026-09-13', 30, 'long'), run('2026-09-20', 20, 'long'), run('2026-09-27', 30, 'long')];
-    expect(byId(weeklyChecks(ctx(history)), 'volume')?.level).toBe('info');
+    expect(byId(weeklyChecks(ctx(history)), 'volume')?.level).toBe('good');
+  });
+
+  it("doesn't warn when you're following the plan's step-up", () => {
+    const planned = [{ date: '2026-09-22', type: 'easy' as const, distanceKm: 12, weekIndex: 0 }, { date: '2026-09-27', type: 'long' as const, distanceKm: 26, weekIndex: 0 }];
+    const over = [...lastWeek, run('2026-09-22', 12), run('2026-09-24', 12), run('2026-09-27', 13, 'long')]; // 37 km vs 30: +23%
+    expect(byId(weeklyChecks(ctx(over, { planned })), 'volume')).toMatchObject({ level: 'good' });
+    expect(byId(weeklyChecks(ctx(over)), 'volume')?.level).toBe('critical');
+  });
+
+  it('hides checks that have nothing to say', () => {
+    // Tuesday and Wednesday runs only: no previous week, week still in progress, no history, no timings.
+    const checks = weeklyChecks(ctx([run('2026-09-22', 8, 'long'), run('2026-09-23', 3)], { weekStart: '2026-09-21', today: '2026-09-23' }));
+    for (const id of ['volume', 'long-share', 'acwr', 'easy-pace']) expect(byId(checks, id)).toBeUndefined();
+    // Every day run so far with no rest day yet is only a problem at the end of the week.
+    const busy = ['2026-09-21', '2026-09-22', '2026-09-23'].map((d) => run(d, 5));
+    expect(byId(weeklyChecks(ctx(busy, { today: '2026-09-23' })), 'rest')).toBeUndefined();
   });
 
   it('checks long-run share, back-to-back hard days and rest days', () => {
@@ -160,6 +176,8 @@ describe('day status', () => {
     expect(dayStatus('2026-09-22', planned, [], '2026-09-25')).toBe('missed');
     expect(dayStatus('2026-09-22', planned, [], '2026-09-20')).toBe('upcoming');
     expect(dayStatus('2026-09-23', undefined, [run('2026-09-23', 5)], '2026-09-25')).toBe('extra');
+    expect(dayStatus('2026-09-30', undefined, [], '2026-09-25')).toBe('rest'); // future day with nothing planned
+    expect(dayStatus('2026-09-30', { date: '2026-09-30', type: 'cross-training', weekIndex: 0 }, [], '2026-09-25')).toBe('cross');
   });
 });
 
@@ -210,5 +228,68 @@ describe('review & adjust', () => {
     expect(text).not.toContain('Cross-training (days done per week)');
     const withCross = buildReviewPrompt({ ...opts, cross: { activities: [{ id: 1, name: 'Boxing', active: true, createdAt: '2026-09-01' }], logs: [{ date: '2026-09-29', activityId: 1 }, { date: '2026-10-01', activityId: 1 }] } });
     expect(withCross).toContain('| Boxing | 0 | 2 (Tue Thu) |');
+  });
+});
+
+describe('typed durations and distances', () => {
+  it('accepts ":", "." and "," as separators', () => {
+    expect(parseDuration('45')).toBe(45 * 60);
+    expect(parseDuration('45:30')).toBe(45 * 60 + 30);
+    expect(parseDuration('45.30')).toBe(45 * 60 + 30);
+    expect(parseDuration('45,30')).toBe(45 * 60 + 30);
+    expect(parseDuration('1.05.00')).toBe(3900);
+    expect(parseDuration('1,05,00')).toBe(3900);
+    expect(parseDuration(' 1 05 00 ')).toBe(3900);
+    expect(parseDuration('1:05.00')).toBe(3900);
+  });
+  it('rejects malformed times and treats empty as no time', () => {
+    expect(parseDuration('')).toBeUndefined();
+    expect(parseDuration('45.75')).toBeNull();
+    expect(parseDuration('1.2.3.4')).toBeNull();
+    expect(parseDuration('45..30')).toBeNull();
+    expect(parseDuration('abc')).toBeNull();
+    expect(parseDuration('0')).toBeNull();
+  });
+  it('reads decimals with either separator', () => {
+    expect(parseDecimal('5.2')).toBe(5.2);
+    expect(parseDecimal('5,2')).toBe(5.2);
+    expect(parseDecimal('10')).toBe(10);
+    expect(parseDecimal('.5')).toBe(0.5);
+    expect(Number.isNaN(parseDecimal('5.2.1'))).toBe(true);
+    expect(Number.isNaN(parseDecimal(''))).toBe(true);
+  });
+});
+
+describe('nudging planned workouts', () => {
+  const base = (importPlan(JSON.parse(example), '2026-09-27') as { ok: true; plan: StoredPlan }).plan;
+  const on = (p: StoredPlan, d: string) => p.workouts.find((w) => w.date === d);
+
+  it('moves a workout to an empty day', () => {
+    const moved = moveWorkout(base, '2026-09-29', '2026-09-28') as StoredPlan; // week 1 Tue easy -> Mon
+    expect(on(moved, '2026-09-28')).toMatchObject({ type: 'easy', distanceKm: 5 });
+    expect(on(moved, '2026-09-29')).toBeUndefined();
+    expect((moved.raw as { weeks: { days: { day: string }[] }[] }).weeks[0].days[0].day).toBe('mon');
+  });
+
+  it('swaps with a planned workout, including across a week boundary', () => {
+    const swapped = moveWorkout(base, '2026-09-30', '2026-09-29') as StoredPlan; // Wed quality <-> Tue easy
+    expect(on(swapped, '2026-09-29')?.title).toBe('Easy + 6 strides');
+    expect(on(swapped, '2026-09-30')?.title).toBe('Easy run');
+    const across = moveWorkout(base, '2026-10-04', '2026-10-05') as StoredPlan; // Sun long run -> next Mon
+    expect(on(across, '2026-10-05')).toMatchObject({ type: 'long', weekIndex: 1 });
+  });
+
+  it('protects the race and the plan boundaries', () => {
+    expect(moveWorkout(base, '2026-12-20', '2026-12-19')).toMatch(/Race day/);
+    expect(moveWorkout(base, '2026-12-19', '2026-12-20')).toMatch(/Race day/);
+    expect(moveWorkout(base, '2026-09-29', '2026-09-27')).toMatch(/outside the plan/);
+  });
+
+  it('keeps a week valid when its only workout moves out', () => {
+    const raw = JSON.parse(example);
+    raw.weeks[0].days = [raw.weeks[0].days[0]];
+    const single = (importPlan(raw, '2026-09-27') as { ok: true; plan: StoredPlan }).plan;
+    const moved = moveWorkout(single, '2026-09-29', '2026-10-06');
+    expect(typeof moved).toBe('object');
   });
 });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context';
 import { Stat } from '../components/ui';
 import { VolumeChart, type WeekDatum } from '../components/VolumeChart';
-import { addDays, diffDays, formatShort, startOfWeek } from '../lib/dates';
+import { addDays, diffDays, formatShort, startOfWeek, weekSpanLabel } from '../lib/dates';
 import { weeklyChecks } from '../lib/heuristics';
 import { between, paceSecPerKm, plannedAsActivities, sumKm, weekVolume } from '../lib/stats';
 import { fmtDist, fmtPace } from '../lib/units';
@@ -20,7 +20,7 @@ export function ProgressView() {
   let first: string;
   let last: string;
   if (range === 'plan' && plan) {
-    first = plan.startDate;
+    first = startOfWeek(plan.startDate);
     last = startOfWeek(plan.race.date);
   } else {
     first = addDays(thisWeek, -7 * (Number(range) - 1));
@@ -66,7 +66,7 @@ export function ProgressView() {
         <div className="card-head">
           <div>
             <h2>Weekly distance</h2>
-            <p className="small muted">{unit} per week, Monday to Sunday</p>
+            <p className="small muted">{unit} per week, {weekSpanLabel()}</p>
           </div>
           <div className="seg" role="group" aria-label="Range">
             {plan && (
@@ -125,7 +125,7 @@ function WeekTable({ data }: { data: WeekDatum[] }) {
         </thead>
         <tbody>
           {data.map((d, i) => {
-            const checks = d.start <= today ? weeklyChecks({ weekStart: d.start, runs, today, unit }) : [];
+            const checks = d.start <= today ? weeklyChecks({ weekStart: d.start, runs, today, unit, planned: plan?.workouts }) : [];
             const vol = checks.find((c) => c.id === 'volume');
             const ls = checks.find((c) => c.id === 'long-share');
             const wr = between(runs, d.start, addDays(d.start, 7));

@@ -1,6 +1,6 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
 import schema from '../../schema/curro-plan.v1.schema.json';
-import { addDays, isValidDate, startOfWeek, today, weekdayIndex, WEEKDAYS, type ISODate, type Weekday } from './dates';
+import { addDays, diffDays, isValidDate, mondayOf, today, weekdayIndex, WEEKDAYS, type ISODate, type Weekday } from './dates';
 import { paceToSecPerKm, toKm, type Unit } from './units';
 import { isRunningType, type PlannedWorkout, type StoredPlan, type WorkoutType } from '../types';
 
@@ -74,6 +74,34 @@ function describeError(e: ErrorObject): string {
   return `${where}: ${e.message ?? 'is invalid'}`;
 }
 
+/**
+ * Move the planned workout on `from` to `to` (swapping with whatever is planned there).
+ * Edits the plan file itself and re-imports it, so the stored plan, its weeks and the
+ * exportable JSON stay consistent. Returns the updated plan, or a reason it can't move.
+ */
+export function moveWorkout(plan: StoredPlan, from: ISODate, to: ISODate, now: ISODate = today()): StoredPlan | string {
+  if (from === plan.race.date || to === plan.race.date) return "Race day can't be moved.";
+  const raw = structuredClone(plan.raw) as PlanFileV1;
+  const locate = (d: ISODate) => ({ week: Math.floor(diffDays(mondayOf(d), plan.startDate) / 7), day: WEEKDAYS[weekdayIndex(d)] });
+  const a = locate(from);
+  const b = locate(to);
+  if (b.week < 0 || b.week >= raw.weeks.length) return 'That day is outside the plan.';
+  const moving = raw.weeks[a.week]?.days.find((x) => x.day === a.day);
+  if (!moving) return 'Nothing is planned on that day.';
+  const other = raw.weeks[b.week].days.find((x) => x.day === b.day);
+  raw.weeks[a.week].days = raw.weeks[a.week].days.filter((x) => x !== moving && x !== other);
+  raw.weeks[b.week].days = raw.weeks[b.week].days.filter((x) => x !== moving && x !== other);
+  raw.weeks[b.week].days.push({ ...moving, day: b.day });
+  if (other) raw.weeks[a.week].days.push({ ...other, day: a.day });
+  for (const w of raw.weeks) {
+    if (w.days.length === 0) w.days.push({ day: a.day, type: 'rest' }); // the schema needs at least one day
+    w.days.sort((x, y) => WEEKDAYS.indexOf(x.day) - WEEKDAYS.indexOf(y.day));
+  }
+  const res = importPlan(raw, now);
+  if (!res.ok) return res.errors[0];
+  return { ...res.plan, id: plan.id, status: plan.status, importedAt: plan.importedAt };
+}
+
 export function parsePlan(text: string, now: ISODate = today()): ImportResult {
   let data: unknown;
   try {
@@ -104,7 +132,7 @@ export function importPlan(data: unknown, now: ISODate = today()): ImportResult 
   if (errors.length) return { ok: false, errors };
 
   const unit = file.units;
-  const raceWeekStart = startOfWeek(file.race.date);
+  const raceWeekStart = mondayOf(file.race.date);
   const n = file.weeks.length;
   const weekStart = (i: number) => addDays(raceWeekStart, -7 * (n - 1 - i));
 

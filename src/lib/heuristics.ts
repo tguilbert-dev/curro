@@ -59,10 +59,7 @@ function volumeIncrease(ctx: WeekContext): Check | null {
   const total = weekVolume(runs, weekStart);
   const prev = weekVolume(runs, addDays(weekStart, -7));
   const title = '10% rule';
-  if (prev === 0) {
-    if (total === 0) return null;
-    return { id: 'volume', title, level: 'info', detail: 'No runs were logged last week, so there is nothing to compare with.' };
-  }
+  if (prev === 0) return null; // nothing to compare with
   const change = (total - prev) / prev;
   const limit = prev * 1.1;
   const lowBase = prev < LOW_BASE_KM ? ' At low volume the rule is very cautious; a small jump in absolute distance is usually fine.' : '';
@@ -72,11 +69,19 @@ function volumeIncrease(ctx: WeekContext): Check | null {
       : `${fmtDist(total, unit)} against ${fmtDist(prev, unit)} the week before.`;
     return { id: 'volume', title, level: 'good', value: pct(change), detail };
   }
+  // Following the plan's own step-up isn't a problem; only running beyond it is.
+  const plannedWeek = ctx.planned ? weekVolume(plannedAsActivities(ctx.planned), weekStart) : 0;
+  if (plannedWeek > 0 && total <= plannedWeek * 1.05) {
+    return {
+      id: 'volume', title, level: 'good', value: pct(change),
+      detail: `${fmtDist(total, unit)} against ${fmtDist(prev, unit)} last week. Your plan steps up here (${fmtDist(plannedWeek, unit)} planned), and you're within it.`,
+    };
+  }
   // Returning to normal after a cutback week isn't a real increase.
   const earlierPeak = Math.max(...[2, 3, 4].map((w) => weekVolume(runs, addDays(weekStart, -7 * w))));
   if (earlierPeak > prev && total <= earlierPeak * 1.1) {
     return {
-      id: 'volume', title, level: 'info', value: pct(change),
+      id: 'volume', title, level: 'good', value: pct(change),
       detail: `Up ${pct(change)} on last week, but last week was lighter. Compared with your recent peak of ${fmtDist(earlierPeak, unit)} this is within 10%, so it looks like a return from a cutback week.`,
     };
   }
@@ -99,8 +104,9 @@ function longRunShare(ctx: WeekContext): Check | null {
     const note = share > 0.35 ? ' That is allowed; many coaches aim for 25–35%.' : '';
     return { id: 'long-share', title: 'Long run ≤ 50% of volume', level: 'good', value: `${Math.round(share * 100)}%`, detail: base + note };
   }
+  if (isCurrent(ctx)) return null; // still settling mid-week; judged once the week is over
   return {
-    id: 'long-share', title: 'Long run ≤ 50% of volume', level: isCurrent(ctx) ? 'info' : 'warning', value: `${Math.round(share * 100)}%`,
+    id: 'long-share', title: 'Long run ≤ 50% of volume', level: 'warning', value: `${Math.round(share * 100)}%`,
     detail: `${base} When one run carries over half the week, the body is not conditioned for it. Spread volume across more runs, or shorten the long run.`,
   };
 }
@@ -114,9 +120,7 @@ function easyHardSplit(ctx: WeekContext): Check | null {
   const share = easy / total;
   const title = '80/20 easy–hard balance';
   const value = `${Math.round(share * 100)}% easy`;
-  if (runs.some((r) => r.type === 'race')) {
-    return { id: 'split', title, level: 'info', value, detail: 'The week includes a race, so the balance will naturally lean hard.' };
-  }
+  if (runs.some((r) => r.type === 'race')) return null; // a race week naturally leans hard
   if (share >= 0.75) return { id: 'split', title, level: 'good', value, detail: 'Most of your running is easy, which builds aerobic fitness while leaving you fresh for quality sessions.' };
   return {
     id: 'split', title, level: share >= 0.65 ? 'warning' : 'critical', value,
@@ -158,7 +162,7 @@ function restDays(ctx: WeekContext): Check | null {
   const restSoFar = Array.from({ length: elapsed }, (_, i) => addDays(weekStart, i)).filter((d) => !runDays.has(d) && d < today).length;
   if (restSoFar >= 1) return { id: 'rest', title, level: 'good', value: `${restSoFar}`, detail: `You've had ${restSoFar} rest day${restSoFar > 1 ? 's' : ''} so far this week.` };
   if (runDays.size >= 7) return { id: 'rest', title, level: 'warning', value: '0', detail: 'You ran every day this week. At least one full rest day lowers injury risk and helps you absorb training.' };
-  return { id: 'rest', title, level: 'info', value: '0', detail: 'No rest day yet this week. Plan one before Sunday.' };
+  return null; // not a problem until the week runs out
 }
 
 /** Long runs shouldn't jump much beyond anything done in the last month. */
@@ -188,9 +192,7 @@ function workload(ctx: WeekContext): Check | null {
   if (running.length === 0) return null;
   const earliest = running.reduce((a, b) => (a.date < b.date ? a : b)).date;
   const title = 'Training load (acute : chronic)';
-  if (diffDays(ref, earliest) < 21) {
-    return { id: 'acwr', title, level: 'info', detail: 'Needs about 4 weeks of logged runs to compare this week with your usual load.' };
-  }
+  if (diffDays(ref, earliest) < 21) return null; // needs ~4 weeks of history
   const acute = sumKm(between(running, addDays(ref, -6), addDays(ref, 1)));
   const chronic = sumKm(between(running, addDays(ref, -27), addDays(ref, 1))) / 4;
   if (chronic === 0) return null;
@@ -199,7 +201,7 @@ function workload(ctx: WeekContext): Check | null {
   const base = `Last 7 days ${fmtDist(acute, ctx.unit)} against a 4-week average of ${fmtDist(chronic, ctx.unit)}/week.`;
   if (ratio > 1.5) return { id: 'acwr', title, level: 'critical', value, detail: `${base} A ratio above 1.5 is a load spike and carries a clearly higher injury risk. Ease off for a few days.` };
   if (ratio > 1.3) return { id: 'acwr', title, level: 'warning', value, detail: `${base} Above 1.3 you are building quickly. Keep the next few runs easy.` };
-  if (ratio < 0.8) return { id: 'acwr', title, level: 'info', value, detail: `${base} Below your usual load, which is fine for a taper, cutback or recovery week.` };
+  if (ratio < 0.8) return null; // a lighter week (taper, cutback, recovery) isn't a problem
   return { id: 'acwr', title, level: 'good', value, detail: `${base} Between 0.8 and 1.3 is the sweet spot.` };
 }
 
@@ -221,9 +223,7 @@ function easyPace(ctx: WeekContext): Check | null {
       source = `your recent hard-session pace of ${fmtPace(hardPace, ctx.unit)}`;
     }
   }
-  if (floor == null) {
-    return { id: 'easy-pace', title, level: 'info', detail: 'Log a hard session with a time, or add `paces.easy` to your plan, so easy-run pace can be checked. Easy should feel conversational.' };
-  }
+  if (floor == null) return null; // no plan pace or timed hard runs to compare against
   const tooFast = timedEasy.filter((r) => paceSecPerKm(r)! < floor!);
   if (tooFast.length === 0) return { id: 'easy-pace', title, level: 'good', detail: `All timed easy runs were comfortably slower than ${source}.` };
   const list = tooFast.map((r) => `${formatShort(r.date)} (${fmtPace(paceSecPerKm(r)!, ctx.unit)})`).join(', ');

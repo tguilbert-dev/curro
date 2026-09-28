@@ -51,6 +51,16 @@ export function SettingsView() {
           </div>
         </div>
         <div className="row">
+          <span style={{ width: 90 }}>Week starts</span>
+          <div className="seg" role="group" aria-label="Week starts on">
+            {(['mon', 'sun'] as const).map((d) => (
+              <button key={d} aria-pressed={settings.weekStart === d} onClick={() => saveSetting('weekStart', d)}>
+                {d === 'mon' ? 'Monday' : 'Sunday'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="row">
           <span style={{ width: 90 }}>Theme</span>
           <div className="seg" role="group" aria-label="Theme">
             {(['system', 'light', 'dark'] as ThemePref[]).map((t) => (

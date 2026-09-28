@@ -30,7 +30,8 @@ export default defineConfig({
     react(),
     publishSchema(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new version waits until the user taps Reload (see UpdateBanner).
+      registerType: 'prompt',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Curro — run tracker',

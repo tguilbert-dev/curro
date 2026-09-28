@@ -42,13 +42,16 @@ export function paceSecPerKm(run: Run): number | undefined {
   return run.durationSec && run.distanceKm > 0 ? run.durationSec / run.distanceKm : undefined;
 }
 
-export type DayStatus = 'done' | 'partial' | 'missed' | 'upcoming' | 'today' | 'rest' | 'extra';
+export type DayStatus = 'done' | 'partial' | 'missed' | 'upcoming' | 'today' | 'rest' | 'extra' | 'cross';
 
 /** How a day went against the plan. */
 export function dayStatus(date: ISODate, planned: PlannedWorkout | undefined, runs: Run[], now: ISODate): DayStatus {
   const ranKm = sumKm(runs.filter((r) => isRunningType(r.type)));
   const plannedRun = planned && isRunningType(planned.type);
-  if (!plannedRun) return ranKm > 0 ? 'extra' : date > now ? 'upcoming' : 'rest';
+  if (!plannedRun) {
+    if (ranKm > 0) return 'extra';
+    return planned?.type === 'cross-training' ? 'cross' : 'rest';
+  }
   const target = planned.distanceKm ?? 0;
   if (ranKm > 0) return target === 0 || ranKm >= target * 0.9 ? 'done' : 'partial';
   if (date === now) return 'today';
@@ -63,4 +66,5 @@ export const DAY_STATUS_LABEL: Record<DayStatus, string> = {
   today: 'Today',
   rest: 'Rest',
   extra: 'Unplanned run',
+  cross: 'Cross-training',
 };

@@ -1,4 +1,4 @@
-import type { ISODate } from './lib/dates';
+import type { ISODate, WeekStart } from './lib/dates';
 import type { Unit } from './lib/units';
 
 export const WORKOUT_TYPES = [
@@ -99,6 +99,7 @@ export type ThemePref = 'system' | 'light' | 'dark';
 export interface Settings {
   units: Unit;
   theme: ThemePref;
+  weekStart: WeekStart;
 }
 
-export const DEFAULT_SETTINGS: Settings = { units: 'km', theme: 'system' };
+export const DEFAULT_SETTINGS: Settings = { units: 'km', theme: 'system', weekStart: 'mon' };

@@ -57,13 +57,16 @@ export async function mergeDuplicateActivities(): Promise<number> {
   });
 }
 
+/** Tick or untick an activity for a day. One transaction, so fast double taps can't both add. */
 export async function toggleActivity(date: ISODate, activityId: number) {
-  const match = db.crossLogs.where('[date+activityId]').equals([date, activityId]);
-  if (await match.count()) await match.delete();
-  else await db.crossLogs.add({ date, activityId });
+  await db.transaction('rw', db.crossLogs, async () => {
+    const match = db.crossLogs.where('[date+activityId]').equals([date, activityId]);
+    if (await match.count()) await match.delete();
+    else await db.crossLogs.add({ date, activityId });
+  });
 }
 
-/** Days the activity was done in each Monday-starting week. */
+/** Days the activity was done in each week (weekStarts are the first day of each week). */
 export function daysPerWeek(logs: CrossLog[], activityId: number, weekStarts: ISODate[]): number[] {
   const dates = new Set(logs.filter((l) => l.activityId === activityId).map((l) => l.date));
   return weekStarts.map((ws) => Array.from({ length: 7 }, (_, i) => addDays(ws, i)).filter((d) => dates.has(d)).length);

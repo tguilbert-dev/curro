@@ -2,10 +2,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useApp } from '../context';
 import { db } from '../db';
+import { Section } from '../components/Section';
 import { CheckList, Stat, StatusBadge, TypePill } from '../components/ui';
+import type { Check } from '../lib/heuristics';
 import {
   addDays, addMonths, daysInMonth, diffDays, formatMonth, formatWeekRange, startOfMonth, startOfWeek,
-  weekDates, WEEKDAY_SHORT, type ISODate,
+  mondayOf, weekDates, weekdayIndex, weekdayLabels, WEEKDAY_SHORT, type ISODate,
 } from '../lib/dates';
 import { weeklyChecks } from '../lib/heuristics';
 import { between, dayStatus, groupByDate, plannedAsActivities, sumKm, weekVolume } from '../lib/stats';
@@ -14,10 +16,45 @@ import { WorkoutIcon } from '../components/WorkoutIcon';
 import { categoryOf, isRunningType, type CrossActivity, type Run, TYPE_LABEL } from '../types';
 import { useSwipe } from '../components/useSwipe';
 
+type CalendarMode = 'week' | 'month';
+const MODE_KEY = 'curro-calendar-mode';
+
+// Remembered while switching tabs; the mode is also remembered across launches.
+let lastAnchor: ISODate | null = null;
+let lastMode: CalendarMode | null = null;
+
+function savedMode(): CalendarMode {
+  if (lastMode) return lastMode;
+  try {
+    return localStorage.getItem(MODE_KEY) === 'month' ? 'month' : 'week';
+  } catch {
+    return 'week';
+  }
+}
+
+/** Make the calendar open on a given date and view next time it's shown. */
+export function openCalendarAt(date: ISODate, mode: CalendarMode = 'week') {
+  lastAnchor = date;
+  lastMode = mode;
+}
+
 export function CalendarView() {
   const { today } = useApp();
-  const [mode, setMode] = useState<'week' | 'month'>('week');
-  const [anchor, setAnchor] = useState<ISODate>(today);
+  const [mode, setModeState] = useState<CalendarMode>(savedMode);
+  const [anchor, setAnchorState] = useState<ISODate>(() => lastAnchor ?? today);
+  const setAnchor = (d: ISODate) => {
+    lastAnchor = d;
+    setAnchorState(d);
+  };
+  const setMode = (m: CalendarMode) => {
+    lastMode = m;
+    setModeState(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {
+      // storage blocked: the mode is still remembered for this session
+    }
+  };
   return (
     <>
       <div className="row" style={{ justifyContent: 'center' }}>
@@ -78,7 +115,8 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
   const plannedTotal = plan ? weekVolume(plannedAsActivities(plan.workouts), weekStart) : 0;
   const weekRuns = between(runs, weekStart, addDays(weekStart, 7));
   const longest = weekRuns.length ? Math.max(...weekRuns.map((r) => r.distanceKm)) : 0;
-  const planWeekIdx = plan ? plan.weeks.findIndex((w) => w.start === weekStart) : -1;
+  // Plan weeks are Monday-based; with Sunday-start weeks, match on the week's midpoint.
+  const planWeekIdx = plan ? plan.weeks.findIndex((w) => w.start === mondayOf(addDays(weekStart, 3))) : -1;
   const planWeek = plan && planWeekIdx >= 0 ? plan.weeks[planWeekIdx] : undefined;
 
   const checks = weeklyChecks({
@@ -118,7 +156,7 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
 
       <section className="card swipeable" ref={swipeRef}>
         <div className="days">
-          {dates.map((d, i) => {
+          {dates.map((d) => {
             const planned = plannedByDate.get(d);
             const dayRuns = byDate.get(d) ?? [];
             const km = sumKm(dayRuns);
@@ -126,7 +164,7 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
             return (
               <button key={d} className={`day ${d === today ? 'is-today' : ''}`} onClick={() => openDay(d)}>
                 <span>
-                  <span className="dname">{WEEKDAY_SHORT[i]}</span>
+                  <span className="dname">{WEEKDAY_SHORT[weekdayIndex(d)]}</span>
                   <br />
                   <span className="ddate">{d.slice(8)}</span>
                 </span>
@@ -161,10 +199,9 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
         </div>
       </section>
 
-      <section className="card">
-        <h2>Training checks</h2>
+      <Section id="week-checks" title="Training checks" defaultOpen={false} summary={<ChecksSummary checks={checks} />}>
         <CheckList checks={checks} empty={weekStart > today ? 'Checks appear once the week starts.' : undefined} />
-      </section>
+      </Section>
     </>
   );
 }
@@ -209,7 +246,7 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
       </div>
       <section className="card swipeable" ref={swipeRef}>
         <div className="month">
-          {WEEKDAY_SHORT.map((d) => (
+          {weekdayLabels().map((d) => (
             <span key={d} className="dow">
               {d.slice(0, 2)}
             </span>
@@ -327,6 +364,22 @@ function CrossBadges({ ids, badges }: { ids: number[]; badges: Map<number, strin
         </span>
       ))}
       {unique.length > shown.length && <span className="xb">+{unique.length - shown.length}</span>}
+    </span>
+  );
+}
+
+/** One-line status for the collapsed checks heading, e.g. "1 too much · 2 caution" or "All OK". */
+function ChecksSummary({ checks }: { checks: Check[] }) {
+  if (checks.length === 0) return null;
+  const critical = checks.filter((c) => c.level === 'critical').length;
+  const warning = checks.filter((c) => c.level === 'warning').length;
+  const parts = [critical && `${critical} too much`, warning && `${warning} caution`].filter(Boolean);
+  return (
+    <span className={`checks-summary ${critical ? 'lvl-critical' : warning ? 'lvl-warning' : 'lvl-good'}`}>
+      <span className="icon" aria-hidden="true">
+        {critical ? '!!' : warning ? '!' : '✓'}
+      </span>
+      {parts.length ? parts.join(' · ') : 'All OK'}
     </span>
   );
 }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppContext, type AppState, type Tab } from './context';
-import { requestPersistentStorage, useActivePlan, useRuns, useSettings } from './db';
+import { requestPersistentStorage, THEME_KEY, useActivePlan, useRuns, useSettings } from './db';
 import { DayDetail } from './components/DayDetail';
 import { RunForm } from './components/RunForm';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Icon } from './components/ui';
 import { mergeDuplicateActivities } from './lib/activities';
-import { today as todayISO, type ISODate } from './lib/dates';
+import { setWeekStart, today as todayISO, type ISODate } from './lib/dates';
 import type { Run } from './types';
 import { ActivitiesView } from './views/ActivitiesView';
 import { CalendarView } from './views/CalendarView';
@@ -43,6 +44,8 @@ function useToday(): ISODate {
   return today;
 }
 
+let staleModalChecked = false;
+
 export function App() {
   const settings = useSettings();
   const runs = useRuns();
@@ -60,14 +63,58 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  const theme = settings?.theme;
   useEffect(() => {
+    if (!theme) return;
     const root = document.documentElement;
-    if (settings.theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', settings.theme);
-  }, [settings.theme]);
+    if (theme === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // ignore: see saveSetting
+    }
+  }, [theme]);
+
+  // An open dialog gets its own history entry, so the phone's Back button closes the dialog
+  // instead of switching tabs underneath it. Closing it any other way removes that entry.
+  const modalOpen = runForm != null || day != null;
+  const modalEntry = useRef(false);
+  useEffect(() => {
+    if (modalOpen && !modalEntry.current) {
+      history.pushState({ curroModal: true }, '');
+      modalEntry.current = true;
+    } else if (!modalOpen && modalEntry.current) {
+      modalEntry.current = false;
+      history.back();
+    }
+  }, [modalOpen]);
+  useEffect(() => {
+    // Reloaded while a dialog was open: that dialog's history entry is left behind, so the
+    // first Back press would appear to do nothing. Step back past it.
+    if (!staleModalChecked && (history.state as { curroModal?: boolean } | null)?.curroModal) history.back();
+    staleModalChecked = true; // once per page load (dev mode runs effects twice)
+    const onPop = () => {
+      if (!modalEntry.current) return;
+      modalEntry.current = false;
+      setRunForm(null);
+      setDay(null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const goTo = useCallback((t: Tab) => {
-    location.hash = `#/${t}`;
+    if (modalEntry.current) {
+      // Navigating from inside a dialog: close it and reuse its history entry for the tab.
+      modalEntry.current = false;
+      setRunForm(null);
+      setDay(null);
+      history.replaceState(null, '', `#/${t}`);
+      setTab(t);
+    } else {
+      location.hash = `#/${t}`;
+    }
     window.scrollTo(0, 0);
   }, []);
 
@@ -76,10 +123,15 @@ export function App() {
     setRunForm(opts);
   }, []);
 
-  const state: AppState = useMemo(
-    () => ({ settings, today, runs, plan, openRunForm, openDay: setDay, goTo }),
+  const state: AppState | null = useMemo(
+    () => (settings && runs && plan !== undefined ? { settings, today, runs, plan, openRunForm, openDay: setDay, goTo } : null),
     [settings, today, runs, plan, openRunForm, goTo],
   );
+
+  // Loading takes a few milliseconds; render nothing rather than flash default units and empty data.
+  if (!state) return null;
+  // Applied during render so every view computes weeks with the current setting.
+  setWeekStart(state.settings.weekStart);
 
   return (
     <AppContext.Provider value={state}>
@@ -93,6 +145,7 @@ export function App() {
             <Icon name="settings" />
           </button>
         </header>
+        <UpdateBanner />
         <nav className="tabbar" aria-label="Main">
           {TABS.map((t) => (
             <button key={t.id} aria-current={tab === t.id ? 'page' : undefined} onClick={() => goTo(t.id)}>

@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { db } from '../db';
 import { useApp } from '../context';
 import { formatLong, isValidDate, type ISODate } from '../lib/dates';
-import { fmtClock, fmtPace, fromKm, parseClock, toKm } from '../lib/units';
+import { fmtClock, fmtPace, fromKm, parseDecimal, parseDuration, toKm } from '../lib/units';
 import { RUN_TYPES, TYPE_LABEL, type Run, type WorkoutType } from '../types';
 import { Modal } from './ui';
 
@@ -20,27 +20,39 @@ export function RunForm({ date, run, onClose }: { date?: ISODate; run?: Run; onC
   const [type, setType] = useState<WorkoutType>(run?.type ?? (planned && RUN_TYPES.includes(planned.type) ? planned.type : 'easy'));
   const [notes, setNotes] = useState(run?.notes ?? '');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
 
-  const dist = parseFloat(distance.replace(',', '.'));
-  const durationSec = time.trim() ? parseClock(time.includes(':') ? time : `${time}:00`) : undefined;
+  const dist = parseDecimal(distance);
+  const durationSec = parseDuration(time);
   const pace = dist > 0 && durationSec ? durationSec / toKm(dist, unit) : undefined;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!isValidDate(day)) return setError('Pick a date.');
     if (!(dist > 0)) return setError(`Enter a distance in ${unit}.`);
-    if (durationSec === null) return setError('Time should look like 45:30 or 1:05:00.');
-    const record: Run = { date: day, distanceKm: toKm(dist, unit), type, notes: notes.trim() || undefined, durationSec: durationSec || undefined };
-    if (run?.id != null) await db.runs.update(run.id, { ...record, durationSec: record.durationSec, notes: record.notes });
-    else await db.runs.add(record);
-    onClose();
+    if (durationSec === null) return setError('Time should look like 45:30, 45.30 or 1.05.00 (minutes, or h/m/s).');
+    if (busy.current) return; // a second tap while saving must not log the run twice
+    busy.current = true;
+    setSaving(true);
+    try {
+      const record: Run = { date: day, distanceKm: toKm(dist, unit), type, notes: notes.trim() || undefined, durationSec: durationSec || undefined };
+      if (run?.id != null) await db.runs.update(run.id, { ...record, durationSec: record.durationSec, notes: record.notes });
+      else await db.runs.add(record);
+      onClose();
+    } catch (err) {
+      setError(`Couldn't save: ${(err as Error).message}`);
+      busy.current = false;
+      setSaving(false);
+    }
   }
 
   async function remove() {
-    if (run?.id != null && confirm('Delete this run?')) {
-      await db.runs.delete(run.id);
-      onClose();
-    }
+    if (busy.current || run?.id == null || !confirm('Delete this run?')) return;
+    busy.current = true;
+    setSaving(true);
+    await db.runs.delete(run.id);
+    onClose();
   }
 
   return (
@@ -68,14 +80,20 @@ export function RunForm({ date, run, onClose }: { date?: ISODate; run?: Run; onC
           </label>
           <label className="field">
             Distance ({unit})
-            <input type="number" inputMode="decimal" step="0.01" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} autoFocus required />
+            <input type="text" inputMode="decimal" autoComplete="off" value={distance} onChange={(e) => setDistance(e.target.value)} autoFocus required />
           </label>
           <label className="field">
             Time (optional)
-            <input type="text" inputMode="numeric" placeholder="45:30" value={time} onChange={(e) => setTime(e.target.value)} />
+            <input type="text" inputMode="decimal" autoComplete="off" placeholder="45.30 or 1.05.00" value={time} onChange={(e) => setTime(e.target.value)} />
           </label>
         </div>
-        {pace && <p className="small secondary">Pace: {fmtPace(pace, unit)}</p>}
+        {(durationSec || durationSec === null) && (
+          <p className={`small ${durationSec === null ? 'notice error' : 'secondary'}`}>
+            {durationSec === null
+              ? 'Time not understood. Use minutes (45), m.ss (45.30) or h.mm.ss (1.05.00).'
+              : `Time ${fmtClock(durationSec)}${pace ? ` · pace ${fmtPace(pace, unit)}` : ''}`}
+          </p>
+        )}
         <label className="field">
           Notes
           <input type="text" placeholder="How did it feel? Any niggles?" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -83,7 +101,7 @@ export function RunForm({ date, run, onClose }: { date?: ISODate; run?: Run; onC
         {error && <p className="notice error">{error}</p>}
         <div className="row">
           {run && (
-            <button type="button" className="btn danger" onClick={remove}>
+            <button type="button" className="btn danger" onClick={remove} disabled={saving}>
               Delete
             </button>
           )}
@@ -91,8 +109,8 @@ export function RunForm({ date, run, onClose }: { date?: ISODate; run?: Run; onC
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn primary">
-            Save run
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save run'}
           </button>
         </div>
       </form>

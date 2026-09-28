@@ -2,9 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context';
 import { activatePlan, db } from '../db';
+import { Section } from '../components/Section';
 import { TypePill } from '../components/ui';
 import { downloadText } from '../lib/backup';
-import { addDays, formatLong, formatShort, formatWeekRange, startOfWeek } from '../lib/dates';
+import { addDays, formatLong, formatShort, formatWeekRange, mondayOf } from '../lib/dates';
 import { planIssues } from '../lib/heuristics';
 import { parsePlan, planSchema, type ImportResult } from '../lib/plan';
 import { buildPrompt, EMPTY_ANSWERS, type PromptAnswers } from '../lib/prompt';
@@ -65,7 +66,7 @@ function ActivePlan({ plan }: { plan: StoredPlan }) {
           {plan.weeks.map((w, i) => (
             <div key={w.start} className="stack" style={{ gap: 4 }}>
               <div className="row small" style={{ fontWeight: 600 }}>
-                <span style={today >= w.start && today < plan.weeks[i + 1]?.start ? { color: 'var(--accent)' } : undefined}>
+                <span style={today >= w.start && today < addDays(w.start, 7) ? { color: 'var(--accent)' } : undefined}>
                   Week {i + 1} · {formatWeekRange(w.start)}
                 </span>
                 {w.focus && <span className="pill">{w.focus}</span>}
@@ -92,11 +93,12 @@ function ActivePlan({ plan }: { plan: StoredPlan }) {
 }
 
 function ImportCard() {
+  const { plan } = useApp();
   const file = useRef<HTMLInputElement>(null);
-  const [fileText, setFileText] = useState<string>();
+  // A new object per pick, so choosing the same file again still triggers a re-check.
+  const [picked, setPicked] = useState<{ text: string }>();
   return (
-    <section className="card">
-      <h2>Import a plan</h2>
+    <Section id="plan-import" title="Import a plan" defaultOpen={!plan}>
       <p className="small secondary">
         Open the <code>.json</code> file you emailed yourself (save the attachment, then choose it here), or paste the JSON the chatbot gave you.
       </p>
@@ -112,18 +114,18 @@ function ImportCard() {
           hidden
           onChange={async (e) => {
             const f = e.target.files?.[0];
-            if (f) setFileText(await f.text());
+            if (f) setPicked({ text: await f.text() });
             e.target.value = '';
           }}
         />
       </div>
-      <PlanImporter placeholder='…or paste JSON here: {"schemaVersion": 1, …}' incoming={fileText} />
-    </section>
+      <PlanImporter placeholder='…or paste JSON here: {"schemaVersion": 1, …}' incoming={picked} />
+    </Section>
   );
 }
 
 /** Paste box → validation → preview (with changes vs the active plan) → apply. */
-function PlanImporter({ placeholder, incoming }: { placeholder: string; incoming?: string }) {
+function PlanImporter({ placeholder, incoming }: { placeholder: string; incoming?: { text: string } }) {
   const { settings, goTo, plan: current, today } = useApp();
   const unit = settings.units;
   const [text, setText] = useState('');
@@ -134,14 +136,21 @@ function PlanImporter({ placeholder, incoming }: { placeholder: string; incoming
     setResult(t.trim() ? parsePlan(t) : null);
   }
   useEffect(() => {
-    if (incoming != null) check(incoming);
+    if (incoming) check(incoming.text);
   }, [incoming]);
 
+  const applying = useRef(false);
   async function confirmImport(plan: StoredPlan) {
-    await activatePlan(plan);
-    setText('');
-    setResult(null);
-    goTo('today');
+    if (applying.current) return; // a double tap must not import the plan twice
+    applying.current = true;
+    try {
+      await activatePlan(plan);
+      setText('');
+      setResult(null);
+      goTo('today');
+    } finally {
+      applying.current = false;
+    }
   }
 
   const next = result?.ok ? result.plan : null;
@@ -150,7 +159,7 @@ function PlanImporter({ placeholder, incoming }: { placeholder: string; incoming
   const isRevision = !!diff?.sameRace;
   const notes = [
     ...(result?.ok ? result.warnings : []),
-    ...(next && !isRevision && next.startDate < startOfWeek(today)
+    ...(next && !isRevision && next.startDate < mondayOf(today)
       ? [`The plan started on ${formatLong(next.startDate)}; workouts before today will show as missed unless you log them.`]
       : []),
     ...(diff && isRevision && !diff.sameWeeks ? ['The weeks have shifted compared with your current plan, so planned days in the past will line up differently.'] : []),
@@ -272,8 +281,7 @@ function ReviewCard({ plan }: { plan: StoredPlan }) {
   }
 
   return (
-    <section className="card">
-      <h2>Review &amp; adjust with AI</h2>
+    <Section id="plan-review" title="Review & adjust with AI" defaultOpen={false}>
       <p className="small secondary">
         Get a chatbot to compare your recent training with the plan and send back an adjusted version. The completed weeks and the race date stay the same.
       </p>
@@ -323,19 +331,26 @@ function ReviewCard({ plan }: { plan: StoredPlan }) {
         </pre>
       </details>
       <PlanImporter placeholder="Paste the chatbot's whole reply here (the assessment is fine, the JSON is picked out)" />
-    </section>
+    </Section>
   );
 }
 
 export function SamplePlanButton() {
   const { goTo, today } = useApp();
+  const loading = useRef(false);
   async function load() {
+    if (loading.current) return;
     // Move the race to Sunday of the 12th week from now so the sample always starts this week.
-    const sample = { ...examplePlan, race: { ...examplePlan.race, date: addDays(startOfWeek(today), 7 * 11 + 6) } };
+    const sample = { ...examplePlan, race: { ...examplePlan.race, date: addDays(mondayOf(today), 7 * 11 + 6) } };
     const res = parsePlan(JSON.stringify(sample), today);
     if (res.ok && confirm('Load the 12-week half marathon sample plan? It will replace your active plan, if any.')) {
-      await activatePlan(res.plan);
-      goTo('today');
+      loading.current = true;
+      try {
+        await activatePlan(res.plan);
+        goTo('today');
+      } finally {
+        loading.current = false;
+      }
     }
   }
   return (
@@ -346,7 +361,7 @@ export function SamplePlanButton() {
 }
 
 function PromptBuilder() {
-  const { settings } = useApp();
+  const { settings, plan } = useApp();
   const [a, setA] = useState<PromptAnswers>({ ...EMPTY_ANSWERS, units: settings.units });
   const [copied, setCopied] = useState(false);
   const prompt = buildPrompt(a);
@@ -363,8 +378,7 @@ function PromptBuilder() {
   }
 
   return (
-    <section className="card">
-      <h2>Get a plan from an AI chatbot</h2>
+    <Section id="plan-prompt" title="Get a plan from an AI chatbot" defaultOpen={!plan}>
       <ol className="small secondary" style={{ margin: 0, paddingLeft: 20 }}>
         <li>Fill in what you know below (all optional).</li>
         <li>Copy the prompt and paste it into ChatGPT, Claude, Gemini or similar.</li>
@@ -439,7 +453,7 @@ function PromptBuilder() {
           Schema URL
         </a>
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -453,8 +467,7 @@ function ArchivedPlans() {
     });
   }
   return (
-    <section className="card">
-      <h2>Previous plans</h2>
+    <Section id="plan-archive" title="Previous plans" defaultOpen={false}>
       {plans.map((p) => (
         <div key={p.id} className="run-row">
           <span style={{ minWidth: 0 }}>
@@ -473,6 +486,6 @@ function ArchivedPlans() {
           </button>
         </div>
       ))}
-    </section>
+    </Section>
   );
 }

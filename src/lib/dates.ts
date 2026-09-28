@@ -47,8 +47,32 @@ export function weekdayIndex(d: ISODate): number {
   return (fromDayNumber(dayNumber(d)).getUTCDay() + 6) % 7;
 }
 
+/** Weekday the user's weeks start on, as a weekdayIndex (0 = Monday, 6 = Sunday). */
+let weekStartIndex = 0;
+
+export type WeekStart = 'mon' | 'sun';
+
+export function setWeekStart(day: WeekStart) {
+  weekStartIndex = day === 'sun' ? 6 : 0;
+}
+
+/** Start of the week containing d, per the user's week-start setting. Use for anything shown. */
 export function startOfWeek(d: ISODate): ISODate {
+  return addDays(d, -((weekdayIndex(d) - weekStartIndex + 7) % 7));
+}
+
+/** Monday of the week containing d. Plans are always Monday-to-Sunday (see the schema). */
+export function mondayOf(d: ISODate): ISODate {
   return addDays(d, -weekdayIndex(d));
+}
+
+/** Short weekday names in display order, starting on the user's first day of the week. */
+export function weekdayLabels(): string[] {
+  return [...WEEKDAY_SHORT.slice(weekStartIndex), ...WEEKDAY_SHORT.slice(0, weekStartIndex)];
+}
+
+export function weekSpanLabel(): string {
+  return weekStartIndex === 6 ? 'Sunday to Saturday' : 'Monday to Sunday';
 }
 
 export function weekDates(weekStart: ISODate): ISODate[] {
