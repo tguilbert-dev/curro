@@ -11,7 +11,8 @@ import { weeklyChecks } from '../lib/heuristics';
 import { between, dayStatus, groupByDate, plannedAsActivities, sumKm, weekVolume } from '../lib/stats';
 import { fmtDist, fromKm } from '../lib/units';
 import { WorkoutIcon } from '../components/WorkoutIcon';
-import { categoryOf, type Run, TYPE_LABEL } from '../types';
+import { categoryOf, isRunningType, type CrossActivity, type Run, TYPE_LABEL } from '../types';
+import { useSwipe } from '../components/useSwipe';
 
 export function CalendarView() {
   const { today } = useApp();
@@ -84,6 +85,10 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
     weekStart, runs, today, unit,
     planned: plan?.workouts, easyPaceSecPerKm: plan?.easyPaceSecPerKm, raceDate: plan?.race.date,
   });
+  const swipeRef = useSwipe<HTMLElement>(
+    () => setAnchor(addDays(weekStart, -7)),
+    () => setAnchor(addDays(weekStart, 7)),
+  );
 
   return (
     <>
@@ -111,7 +116,7 @@ function WeekView({ anchor, setAnchor }: { anchor: ISODate; setAnchor: (d: ISODa
         <Stat label="Runs" value={weekRuns.length} sub={`${new Set(weekRuns.map((r) => r.date)).size} day${new Set(weekRuns.map((r) => r.date)).size === 1 ? '' : 's'}`} />
       </div>
 
-      <section className="card">
+      <section className="card swipeable" ref={swipeRef}>
         <div className="days">
           {dates.map((d, i) => {
             const planned = plannedByDate.get(d);
@@ -178,9 +183,16 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
   const monthRuns = between(runs, monthStart, monthEnd);
   const monthKm = sumKm(monthRuns);
   const plannedMonthKm = sumKm(between(plannedActs, monthStart, monthEnd));
-  const dayTotals = [...groupByDate(monthRuns).values()].map(sumKm);
-  const maxKm = Math.max(10, ...dayTotals, ...between(plannedActs, gridStart, addDays(gridStart, weeks * 7)).map((a) => a.distanceKm));
-  const size = (km: number) => `${Math.round(8 + 22 * Math.sqrt(km / maxKm))}px`;
+  const swipeRef = useSwipe<HTMLElement>(
+    () => setAnchor(addMonths(monthStart, -1)),
+    () => setAnchor(addMonths(monthStart, 1)),
+  );
+  const gridEnd = addDays(gridStart, weeks * 7 - 1);
+  const crossActivities = useLiveQuery(() => db.crossActivities.toArray(), []) ?? [];
+  const crossLogs = useLiveQuery(() => db.crossLogs.where('date').between(gridStart, gridEnd, true, true).toArray(), [gridStart, gridEnd]) ?? [];
+  const badges = crossBadges(crossActivities);
+  const crossByDate = groupByDate(crossLogs);
+  const crossThisMonth = crossActivities.filter((a) => crossLogs.some((l) => l.activityId === a.id && l.date >= monthStart && l.date < monthEnd));
 
   return (
     <>
@@ -195,7 +207,7 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
         <Stat label="Runs" value={monthRuns.length} sub={`${new Set(monthRuns.map((r) => r.date)).size} days run`} />
         <Stat label="Longest run" value={monthRuns.length ? fmtDist(Math.max(...monthRuns.map((r) => r.distanceKm)), unit) : '—'} />
       </div>
-      <section className="card">
+      <section className="card swipeable" ref={swipeRef}>
         <div className="month">
           {WEEKDAY_SHORT.map((d) => (
             <span key={d} className="dow">
@@ -213,22 +225,28 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
                 const km = sumKm(byDate.get(d) ?? []);
                 const status = dayStatus(d, planned, byDate.get(d) ?? [], today);
                 const plannedKm = planned?.distanceKm ?? 0;
-                const cls = ['mcell', d < monthStart || d >= monthEnd ? 'out' : '', d === today ? 'is-today' : '', planned?.type === 'race' ? 'race' : ''].join(' ');
-                const label = `${d}: ${km > 0 ? `ran ${fmtDist(km, unit)}` : status}${planned ? `, planned ${planned.title ?? TYPE_LABEL[planned.type]}` : ''}`;
+                const dayRuns = byDate.get(d) ?? [];
+                const main = mainRun(dayRuns);
+                const showPlanned = !main && planned && isRunningType(planned.type) && (status === 'upcoming' || status === 'today' || status === 'missed');
+                const cls = ['mcell', d < monthStart || d >= monthEnd ? 'out' : '', d === today ? 'is-today' : '', main ? `cat-${categoryOf(main.type)}` : ''].join(' ');
+                const crossNames = [...new Set((crossByDate.get(d) ?? []).map((l) => crossActivities.find((a) => a.id === l.activityId)?.name).filter(Boolean))];
+                const label = `${d}: ${km > 0 ? `ran ${fmtDist(km, unit)}` : status}${planned ? `, planned ${planned.title ?? TYPE_LABEL[planned.type]}` : ''}${crossNames.length ? `, ${crossNames.join(', ')}` : ''}`;
                 return (
                   <button key={d} className={cls} onClick={() => openDay(d)} aria-label={label} title={label}>
-                    <span className="n">
-                      {Number(d.slice(8))}
-                      {planned?.type === 'race' && <WorkoutIcon type="race" size={11} />}
-                    </span>
-                    {km > 0 ? (
-                      <span className={`bubble cat-${dayCategory(byDate.get(d) ?? [])}`} style={{ width: size(km), height: size(km) }} />
-                    ) : plannedKm > 0 && (status === 'upcoming' || status === 'today' || status === 'missed') ? (
-                      <span className={`bubble ${status === 'missed' ? 'missed' : 'planned'}`} style={{ width: size(plannedKm), height: size(plannedKm) }} />
+                    <span className="n">{Number(d.slice(8))}</span>
+                    {main ? (
+                      <span className={`mk cat-ink-${categoryOf(main.type)}`}>
+                        <WorkoutIcon type={main.type} size={18} />
+                      </span>
+                    ) : showPlanned ? (
+                      <span className={`mk ${status === 'missed' ? 'missed' : 'planned'}`}>
+                        <WorkoutIcon type={planned!.type} size={18} />
+                      </span>
                     ) : (
                       <span />
                     )}
-                    <span className="km">{km > 0 ? fromKm(km, unit).toFixed(1) : plannedKm > 0 && d >= today ? fromKm(plannedKm, unit).toFixed(0) : ''}</span>
+                    <span className={`km ${km > 0 ? "" : "muted"}`}>{km > 0 ? fromKm(km, unit).toFixed(1) : plannedKm > 0 && d >= today ? fromKm(plannedKm, unit).toFixed(0) : ''}</span>
+                    <CrossBadges ids={(crossByDate.get(d) ?? []).map((l) => l.activityId)} badges={badges} />
                   </button>
                 );
               }),
@@ -247,25 +265,34 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
           })}
         </div>
         <div className="legend">
-          <span>
-            <span className="sw" style={{ background: 'var(--cat-easy)' }} /> Easy
+          <span className="cat-ink-easy">
+            <WorkoutIcon type="easy" /> <span className="secondary">Easy</span>
+          </span>
+          <span className="cat-ink-long">
+            <WorkoutIcon type="long" /> <span className="secondary">Long</span>
+          </span>
+          <span className="cat-ink-hard">
+            <WorkoutIcon type="intervals" /> <span className="secondary">Hard</span>
+          </span>
+          <span className="mk planned">
+            <WorkoutIcon type="tempo" /> <span className="secondary">Planned</span>
+          </span>
+          <span className="mk missed">
+            <WorkoutIcon type="tempo" /> <span className="secondary">Missed</span>
           </span>
           <span>
-            <span className="sw" style={{ background: 'var(--cat-long)' }} /> Long
+            <WorkoutIcon type="race" /> Race
           </span>
-          <span>
-            <span className="sw" style={{ background: 'var(--cat-hard)' }} /> Hard
-          </span>
-          <span>
-            <span className="sw" style={{ border: '2px solid var(--axis)' }} /> Planned
-          </span>
-          <span>
-            <span className="sw" style={{ border: '2px solid var(--critical)' }} /> Missed
-          </span>
-          <span>
-            <WorkoutIcon type="race" size={11} /> Race day
-          </span>
-          <span>Dot size = distance · week column: run / planned {unit}</span>
+          {crossThisMonth.length > 0 && (
+            <span>
+              {crossThisMonth.map((a) => (
+                <span key={a.id} style={{ marginRight: 8 }}>
+                  <span className="xb">{badges.get(a.id!)}</span> {a.name}
+                </span>
+              ))}
+            </span>
+          )}
+          <span>Week column: run / planned {unit} · swipe to change month</span>
         </div>
       </section>
     </>
@@ -273,8 +300,33 @@ function MonthView({ anchor, setAnchor, onPickWeek }: { anchor: ISODate; setAnch
 }
 
 
-/** The day's colour: any hard run wins, then a long run, otherwise easy. */
-function dayCategory(runs: Run[]): 'easy' | 'long' | 'hard' {
-  const cats = runs.map((r) => categoryOf(r.type));
-  return cats.includes('hard') ? 'hard' : cats.includes('long') ? 'long' : 'easy';
+/** The run that represents a day: a race, then any hard run, then a long run, then the longest. */
+function mainRun(runs: Run[]): Run | undefined {
+  const rank = (r: Run) => (r.type === 'race' ? 3 : categoryOf(r.type) === 'hard' ? 2 : r.type === 'long' ? 1 : 0);
+  return [...runs].sort((a, b) => rank(b) - rank(a) || b.distanceKm - a.distanceKm)[0];
+}
+
+/** Short badge per activity: first letter, or first two if the letter is shared. */
+function crossBadges(activities: CrossActivity[]): Map<number, string> {
+  const first = (a: CrossActivity) => a.name.trim().charAt(0).toUpperCase();
+  const counts = new Map<string, number>();
+  for (const a of activities) counts.set(first(a), (counts.get(first(a)) ?? 0) + 1);
+  return new Map(activities.map((a) => [a.id!, (counts.get(first(a))! > 1 ? a.name.trim().slice(0, 2) : first(a)) || '•']));
+}
+
+/** Up to two cross-training badges in a month cell, then "+n". */
+function CrossBadges({ ids, badges }: { ids: number[]; badges: Map<number, string> }) {
+  const unique = [...new Set(ids)].filter((id) => badges.has(id));
+  if (unique.length === 0) return null;
+  const shown = unique.length > 2 ? unique.slice(0, 1) : unique;
+  return (
+    <span className="xbs" aria-hidden="true">
+      {shown.map((id) => (
+        <span key={id} className="xb">
+          {badges.get(id)}
+        </span>
+      ))}
+      {unique.length > shown.length && <span className="xb">+{unique.length - shown.length}</span>}
+    </span>
+  );
 }

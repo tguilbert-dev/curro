@@ -1,8 +1,61 @@
 import { db } from '../db';
 import { addDays, type ISODate } from './dates';
-import type { CrossLog } from '../types';
+import type { CrossActivity, CrossLog } from '../types';
 
 export const SUGGESTED_ACTIVITIES = ['PT', 'Boxing', 'Rowing'];
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * Add an activity by name, or restore it if it's archived. The existence check and the write
+ * happen in one transaction, so repeated taps (e.g. queued while the database was stalled)
+ * can never create duplicates.
+ */
+export async function addActivity(name: string, today: ISODate): Promise<'added' | 'restored' | 'exists'> {
+  return db.transaction('rw', db.crossActivities, async () => {
+    const match = (await db.crossActivities.toArray()).find((a) => sameName(a.name, name));
+    if (match?.active) return 'exists';
+    if (match) {
+      await db.crossActivities.update(match.id!, { active: true });
+      return 'restored';
+    }
+    await db.crossActivities.add({ name: name.trim(), active: true, createdAt: today });
+    return 'added';
+  });
+}
+
+/**
+ * Merge activities that share a name (keeping the oldest, and every day ticked on any copy).
+ * Returns how many duplicates were removed.
+ */
+export async function mergeDuplicateActivities(): Promise<number> {
+  return db.transaction('rw', db.crossActivities, db.crossLogs, async () => {
+    const all = (await db.crossActivities.toArray()).sort((a, b) => a.id! - b.id!);
+    const keepers = new Map<string, CrossActivity>();
+    let removed = 0;
+    for (const a of all) {
+      const key = a.name.trim().toLowerCase();
+      const keep = keepers.get(key);
+      if (!keep) {
+        keepers.set(key, a);
+        continue;
+      }
+      const keepDates = new Set((await db.crossLogs.where('activityId').equals(keep.id!).toArray()).map((l) => l.date));
+      for (const log of await db.crossLogs.where('activityId').equals(a.id!).toArray()) {
+        if (keepDates.has(log.date)) await db.crossLogs.delete(log.id!);
+        else {
+          await db.crossLogs.update(log.id!, { activityId: keep.id! });
+          keepDates.add(log.date);
+        }
+      }
+      if (a.active && !keep.active) await db.crossActivities.update(keep.id!, { active: true });
+      if (a.createdAt < keep.createdAt) await db.crossActivities.update(keep.id!, { createdAt: a.createdAt });
+      await db.crossActivities.delete(a.id!);
+      removed++;
+    }
+    return removed;
+  });
+}
 
 export async function toggleActivity(date: ISODate, activityId: number) {
   const match = db.crossLogs.where('[date+activityId]').equals([date, activityId]);

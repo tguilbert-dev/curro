@@ -2,9 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type FormEvent } from 'react';
 import { useApp } from '../context';
 import { db } from '../db';
-import { daysPerWeek, SUGGESTED_ACTIVITIES, toggleActivity, trend, type Trend } from '../lib/activities';
+import { addActivity, daysPerWeek, SUGGESTED_ACTIVITIES, toggleActivity, trend, type Trend } from '../lib/activities';
 import { addDays, formatShort, formatWeekRange, startOfWeek, weekDates, WEEKDAY_SHORT } from '../lib/dates';
 import type { CrossActivity } from '../types';
+import { useSwipe } from '../components/useSwipe';
 
 const WEEKS = 12;
 const TREND_LABEL: Record<Trend, string> = { up: '↑ up', down: '↓ down', steady: '→ steady' };
@@ -13,8 +14,13 @@ export function ActivitiesView() {
   const { today } = useApp();
   const thisWeek = startOfWeek(today);
   const [weekStart, setWeekStart] = useState(thisWeek);
+  const prevWeek = () => setWeekStart((w) => addDays(w, -7));
+  const nextWeek = () => setWeekStart((w) => (w < thisWeek ? addDays(w, 7) : w));
+  const swipeRef = useSwipe<HTMLElement>(prevWeek, nextWeek);
   const activities = useLiveQuery(() => db.crossActivities.toArray(), []);
-  const logs = useLiveQuery(() => db.crossLogs.where('date').aboveOrEqual(addDays(thisWeek, -7 * WEEKS)).toArray(), [thisWeek]);
+  // Load back to whichever is earlier: the trend window or the week being viewed.
+  const from = [addDays(thisWeek, -7 * WEEKS), weekStart].sort()[0];
+  const logs = useLiveQuery(() => db.crossLogs.where('date').aboveOrEqual(from).toArray(), [from]);
   if (!activities || !logs) return null;
 
   const active = activities.filter((a) => a.active);
@@ -30,16 +36,17 @@ export function ActivitiesView() {
           <h2>Cross-training</h2>
           <p className="secondary">Track anything besides running with one tap a day, and see how often you do it over time.</p>
           <AddActivity existing={activities} />
+          <ArchivedList archived={archived} />
         </section>
       ) : (
         <>
-          <section className="card">
+          <section className="card swipeable" ref={swipeRef}>
             <div className="week-nav">
-              <button className="btn icon" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
+              <button className="btn icon" onClick={prevWeek} aria-label="Previous week">
                 ‹
               </button>
               <h2>{formatWeekRange(weekStart)}</h2>
-              <button className="btn icon" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week" disabled={weekStart >= thisWeek}>
+              <button className="btn icon" onClick={nextWeek} aria-label="Next week" disabled={weekStart >= thisWeek}>
                 ›
               </button>
             </div>
@@ -71,7 +78,7 @@ export function ActivitiesView() {
                 }),
               ])}
             </div>
-            <p className="small muted">Tap a square to mark a day done.</p>
+            <p className="small muted">Tap a square to mark a day done. Swipe to change week.</p>
           </section>
 
           <section className="card">
@@ -109,20 +116,26 @@ export function ActivitiesView() {
               ))}
             </div>
             <AddActivity existing={activities} />
-            {archived.length > 0 && (
-              <details>
-                <summary className="small">Archived ({archived.length})</summary>
-                <div className="stack" style={{ marginTop: 8 }}>
-                  {archived.map((a) => (
-                    <ActivityRow key={a.id} activity={a} />
-                  ))}
-                </div>
-              </details>
-            )}
+            <ArchivedList archived={archived} />
           </section>
         </>
       )}
     </>
+  );
+}
+
+/** Archived activities, so they can always be restored (even when nothing is active). */
+function ArchivedList({ archived }: { archived: CrossActivity[] }) {
+  if (archived.length === 0) return null;
+  return (
+    <details style={{ textAlign: 'left', width: '100%' }}>
+      <summary className="small">Archived ({archived.length})</summary>
+      <div className="stack" style={{ marginTop: 8 }}>
+        {archived.map((a) => (
+          <ActivityRow key={a.id} activity={a} />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -166,26 +179,50 @@ function ActivityRow({ activity }: { activity: CrossActivity }) {
 function AddActivity({ existing }: { existing: CrossActivity[] }) {
   const { today } = useApp();
   const [name, setName] = useState('');
-  const taken = new Set(existing.map((a) => a.name.toLowerCase()));
-  const add = (n: string) => n.trim() && !taken.has(n.trim().toLowerCase()) && db.crossActivities.add({ name: n.trim(), active: true, createdAt: today });
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const find = (n: string) => existing.find((a) => a.name.toLowerCase() === n.toLowerCase());
+
+  // Never fail silently: say when a name exists, was restored, is slow to save, or failed.
+  async function add(raw: string) {
+    const n = raw.trim();
+    if (!n || busy) return;
+    setBusy(true);
+    const slow = setTimeout(
+      () => setMessage({ text: 'Still saving… If nothing happens, close the app completely and reopen it.', error: true }),
+      2500,
+    );
+    try {
+      const result = await addActivity(n, today);
+      const label = find(n)?.name ?? n;
+      setMessage(result === 'restored' ? { text: `Restored ${label}, with its history.` } : result === 'exists' ? { text: `${label} is already in your list.` } : null);
+      setName('');
+    } catch (err) {
+      setMessage({ text: `Couldn't save: ${(err as Error).message}. Is this a private window or is site storage blocked?`, error: true });
+    } finally {
+      clearTimeout(slow);
+      setBusy(false);
+    }
+  }
   function submit(e: FormEvent) {
     e.preventDefault();
     add(name);
-    setName('');
   }
-  const suggestions = SUGGESTED_ACTIVITIES.filter((s) => !taken.has(s.toLowerCase()));
+  // Archived suggestions stay visible: tapping one restores it.
+  const suggestions = SUGGESTED_ACTIVITIES.filter((s) => !find(s)?.active);
   return (
     <div className="stack">
       <form className="row" onSubmit={submit}>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="New activity, e.g. Boxing" style={{ flex: 1, minWidth: 160 }} />
-        <button type="submit" className="btn primary" disabled={!name.trim()}>
-          Add
+        <button type="submit" className="btn primary" disabled={!name.trim() || busy}>
+          {busy ? 'Saving…' : 'Add'}
         </button>
       </form>
+      {message && <p className={`notice small ${message.error ? 'error' : ''}`}>{message.text}</p>}
       {suggestions.length > 0 && (
         <div className="chips">
           {suggestions.map((s) => (
-            <button key={s} className="chip" onClick={() => add(s)}>
+            <button key={s} className="chip" disabled={busy} onClick={() => add(s)}>
               + {s}
             </button>
           ))}

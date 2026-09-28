@@ -4,6 +4,7 @@ import { requestPersistentStorage, useActivePlan, useRuns, useSettings } from '.
 import { DayDetail } from './components/DayDetail';
 import { RunForm } from './components/RunForm';
 import { Icon } from './components/ui';
+import { mergeDuplicateActivities } from './lib/activities';
 import { today as todayISO, type ISODate } from './lib/dates';
 import type { Run } from './types';
 import { ActivitiesView } from './views/ActivitiesView';
@@ -55,6 +56,7 @@ export function App() {
     const onHash = () => setTab(tabFromHash());
     window.addEventListener('hashchange', onHash);
     requestPersistentStorage();
+    mergeDuplicateActivities().catch(() => {});
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
