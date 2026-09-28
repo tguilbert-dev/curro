@@ -1,0 +1,420 @@
+{
+  "$schema": "urn:curro:plan:v1",
+  "schemaVersion": 1,
+  "name": "12-week half marathon, sub 1:55",
+  "description": "Four runs a week: two easy runs, one quality session and a long run. Volume builds from 25 km to 40 km, never more than 10% over the recent peak, with cutback weeks in weeks 4 and 8, then a two-week taper.",
+  "author": "Curro example",
+  "units": "km",
+  "race": {
+    "name": "Example City Half Marathon",
+    "date": "2026-12-20",
+    "distance": 21.1,
+    "goalTime": "1:54:59"
+  },
+  "paces": {
+    "easy": "6:15",
+    "long": "6:20",
+    "threshold": "5:05",
+    "interval": "4:45",
+    "race": "5:25"
+  },
+  "weeks": [
+    {
+      "focus": "Base",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy + 6 strides",
+          "description": "Easy 6 km, then 6 × 20 s relaxed strides with full walk-back recovery."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 9,
+          "title": "Long run 9 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Base",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "fartlek",
+          "distance": 7,
+          "title": "Fartlek 8 × 1 min",
+          "description": "2 km easy, 8 × 1 min brisk / 1 min easy, 1 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 10,
+          "title": "Long run 10 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Base",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "hills",
+          "distance": 7,
+          "title": "Hills 6 × 60 s",
+          "description": "2 km easy, 6 × 60 s uphill at strong effort, jog down. 2 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 11,
+          "title": "Long run 11 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Cutback",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy + 4 strides",
+          "description": "Easy run with 4 strides at the end. A lighter week to absorb training."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 4,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 8,
+          "title": "Long run 8 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Build",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "tempo",
+          "distance": 8,
+          "title": "Tempo 3 × 8 min",
+          "description": "2 km easy, 3 × 8 min at threshold pace with 2 min jog, 1.5 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 12,
+          "title": "Long run 12 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Build",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "intervals",
+          "distance": 9,
+          "title": "Intervals 5 × 1 km",
+          "description": "2 km easy, 5 × 1 km at interval pace with 2 min jog, 2 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 13,
+          "title": "Long run 13 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Build",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "tempo",
+          "distance": 10,
+          "title": "Tempo 2 × 15 min",
+          "description": "2 km easy, 2 × 15 min at threshold pace with 3 min jog, 2 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 7,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 14,
+          "title": "Long run 14 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Cutback",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "fartlek",
+          "distance": 8,
+          "title": "Fartlek 6 × 2 min",
+          "description": "2 km easy, 6 × 2 min brisk / 1 min easy, 2 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 10,
+          "title": "Long run 10 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Peak",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 7,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "race-pace",
+          "distance": 12,
+          "title": "Race pace 3 × 3 km",
+          "description": "2 km easy, 3 × 3 km at goal half-marathon pace with 3 min jog, 1 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 7,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 14,
+          "title": "Long run 14 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Taper",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "intervals",
+          "distance": 9,
+          "title": "Intervals 6 × 800 m",
+          "description": "2 km easy, 6 × 800 m at interval pace with 90 s jog, 2 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 6,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 13,
+          "title": "Long run 13 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Taper",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Conversational effort."
+        },
+        {
+          "day": "wed",
+          "type": "race-pace",
+          "distance": 9,
+          "title": "Race pace 2 × 3 km",
+          "description": "2 km easy, 2 × 3 km at goal pace with 3 min jog, 1 km easy."
+        },
+        {
+          "day": "fri",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy run",
+          "description": "Relaxed, flat route if possible."
+        },
+        {
+          "day": "sun",
+          "type": "long",
+          "distance": 9,
+          "title": "Long run 9 km",
+          "description": "Easy effort throughout. Practise fuelling if over 90 minutes."
+        }
+      ]
+    },
+    {
+      "focus": "Race week",
+      "notes": "Keep legs fresh. Nothing new on race day.",
+      "days": [
+        {
+          "day": "tue",
+          "type": "easy",
+          "distance": 5,
+          "title": "Easy + 4 strides",
+          "description": "Easy 5 km with 4 short strides."
+        },
+        {
+          "day": "thu",
+          "type": "race-pace",
+          "distance": 5,
+          "title": "Race-pace sharpener",
+          "description": "2 km easy, 2 × 1 km at goal pace, 1 km easy."
+        },
+        {
+          "day": "sat",
+          "type": "recovery",
+          "distance": 3,
+          "title": "Shakeout",
+          "description": "15–20 minutes very easy."
+        },
+        {
+          "day": "sun",
+          "type": "race",
+          "distance": 21.1,
+          "title": "Race day!",
+          "description": "Start controlled, settle into goal pace, finish strong."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:curro:plan:v1",
+  "title": "Curro training plan (v1)",
+  "description": "A running training plan leading up to one target race. Plans are written as weeks of days rather than calendar dates: the LAST entry in `weeks` is race week (the Monday-to-Sunday week that contains `race.date`), and every earlier week is counted backwards from it. Days that are not listed are rest days.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "units", "race", "weeks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional URL of this schema, for editor tooling."
+    },
+    "schemaVersion": {
+      "const": 1,
+      "description": "Always 1 for this version of the schema."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "Short plan title, e.g. \"12-week half marathon, sub 1:50\"."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "Overview of the plan's approach, phases and key advice."
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Who or what made the plan (a coach, \"ChatGPT\", \"Claude\", etc.)."
+    },
+    "units": {
+      "enum": ["km", "mi"],
+      "description": "Unit for every distance in this file (race distance and workout distances). Paces are per this unit."
+    },
+    "race": {
+      "type": "object",
+      "required": ["name", "date", "distance"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "date": {
+          "$ref": "#/$defs/isoDate",
+          "description": "Race day, YYYY-MM-DD."
+        },
+        "distance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 500,
+          "description": "Race distance in `units` (e.g. 21.1 km or 13.1 mi)."
+        },
+        "goalTime": {
+          "type": "string",
+          "pattern": "^[0-9]{1,2}:[0-5][0-9]:[0-5][0-9]$",
+          "description": "Target finish time, H:MM:SS or HH:MM:SS."
+        },
+        "location": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "paces": {
+      "type": "object",
+      "description": "Optional training paces (per `units`), used by the app to check that easy runs are really easy.",
+      "additionalProperties": false,
+      "properties": {
+        "easy": { "$ref": "#/$defs/pace", "description": "Slowest end of easy is fine; this is the FASTEST easy runs should be." },
+        "long": { "$ref": "#/$defs/pace" },
+        "marathon": { "$ref": "#/$defs/pace" },
+        "threshold": { "$ref": "#/$defs/pace" },
+        "interval": { "$ref": "#/$defs/pace" },
+        "race": { "$ref": "#/$defs/pace", "description": "Goal race pace." }
+      }
+    },
+    "weeks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 52,
+      "description": "Weeks in chronological order. The final week is race week.",
+      "items": { "$ref": "#/$defs/week" }
+    }
+  },
+  "$defs": {
+    "isoDate": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "pace": {
+      "type": "string",
+      "pattern": "^[0-9]{1,2}:[0-5][0-9]$",
+      "description": "Minutes:seconds per unit, e.g. \"5:30\"."
+    },
+    "workoutType": {
+      "enum": [
+        "easy",
+        "recovery",
+        "long",
+        "tempo",
+        "intervals",
+        "hills",
+        "fartlek",
+        "progression",
+        "race-pace",
+        "time-trial",
+        "race",
+        "cross-training",
+        "rest"
+      ],
+      "description": "easy/recovery/long count as easy running; tempo/intervals/hills/fartlek/progression/race-pace/time-trial/race count as hard running; cross-training and rest are not running."
+    },
+    "week": {
+      "type": "object",
+      "required": ["days"],
+      "additionalProperties": false,
+      "properties": {
+        "focus": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Theme of the week, e.g. \"Base\", \"Build\", \"Cutback\", \"Taper\", \"Race week\"."
+        },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "days": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "description": "At most one entry per weekday. Unlisted weekdays are rest days.",
+          "items": { "$ref": "#/$defs/day" }
+        }
+      }
+    },
+    "day": {
+      "type": "object",
+      "required": ["day", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "day": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+        "type": { "$ref": "#/$defs/workoutType" },
+        "distance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "Total distance in `units`, including warm-up and cool-down. Give a distance for every running day so weekly volume can be tracked."
+        },
+        "durationMin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1440,
+          "description": "Optional duration in minutes (useful for cross-training)."
+        },
+        "title": { "type": "string", "maxLength": 120, "description": "Short label, e.g. \"6 × 800 m\"." },
+        "description": { "type": "string", "maxLength": 2000, "description": "Full instructions: warm-up, main set, recoveries, cool-down." },
+        "targetPace": { "$ref": "#/$defs/pace" }
+      }
+    }
+  }
+}
